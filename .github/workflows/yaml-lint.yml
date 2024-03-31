@@ -1,0 +1,22 @@
+name: lint yaml files
+
+on: [pull_request]
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-actionlint@v1
+  
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: hadolint
+        uses: reviewdog/action-hadolint@v1
+        with:
+          exclude: .devcontainer/Dockerfile

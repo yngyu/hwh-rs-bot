@@ -1,0 +1,28 @@
+name: ci jobs for rust
+
+on: [pull_request]
+
+jobs:
+    build:
+        name: build
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+            - run:  cargo build
+    
+    lint:
+        name: lint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+            - run:  cargo clippy
+
+    format:
+        name: format
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+            - run:  cargo fmt --all --check
