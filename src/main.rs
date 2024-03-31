@@ -1,22 +1,22 @@
 #![warn(clippy::str_to_string)]
 
-mod commands;
+mod voice;
 
 use poise::serenity_prelude as serenity;
-use std::{
-    collections::HashMap,
-    env::var,
-    sync::{atomic::AtomicU32, Mutex},
-};
+use reqwest::Client;
+use songbird::SerenityInit;
+use std::env::var;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+const LISTEN_ONLY_MEMBER: serenity::ChannelId = serenity::ChannelId::new(1020367485838573638);
+
 // Custom user data passed to all command functions
 pub struct Data {
-    votes: Mutex<HashMap<String, u32>>,
-    poise_mentions: AtomicU32,
+    http_client: Client,
+    voicevox_api_key: String,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -38,24 +38,14 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![commands::help(), commands::vote(), commands::getvotes()],
+        commands: vec![voice::connect_vc(), voice::disconnect_vc()],
         // The global error handler for all error cases that may occur
         on_error: |error| Box::pin(on_error(error)),
-        // This code is run before every command
-        pre_command: |ctx| {
-            Box::pin(async move {
-                println!("Executing command {}...", ctx.command().qualified_name);
-            })
-        },
-        // This code is run after a command if it was successful (returned Ok)
-        post_command: |ctx| {
-            Box::pin(async move {
-                println!("Executed command {}!", ctx.command().qualified_name);
-            })
-        },
         event_handler: |ctx, event, framework, data| {
             Box::pin(event_handler(ctx, event, framework, data))
         },
@@ -67,42 +57,45 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+
+                let voicevox_api_key =
+                    var("VOICEVOX_API_KEY").expect("Missing `VOICEVOX_API_KEY` env var");
                 Ok(Data {
-                    votes: Mutex::new(HashMap::new()),
-                    poise_mentions: AtomicU32::new(0)
+                    http_client: Client::new(),
+                    voicevox_api_key,
                 })
             })
         })
         .options(options)
         .build();
 
-    let token = var("DISCORD_TOKEN")
-        .expect("Missing `DISCORD_TOKEN` env var, see README for more information.");
+    let token = var("DISCORD_TOKEN").expect("Missing `DISCORD_TOKEN` env var");
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::privileged();
 
     let client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
+        .register_songbird()
         .await;
 
     client
-        .unwrap()
+        .expect("Error creating client")
         .start()
         .await
-        .unwrap()
+        .expect("Failed to start bot");
 }
 
 async fn event_handler(
-    _ctx: &serenity::Context,
+    ctx: &serenity::Context,
     event: &serenity::FullEvent,
     _framework: poise::FrameworkContext<'_, Data, Error>,
-    _data: &Data,
+    data: &Data,
 ) -> Result<(), Error> {
-    match event {
-        serenity::FullEvent::Message { new_message } => {
-            println!("{:?} has received", new_message);
+    if let serenity::FullEvent::Message { new_message } = event {
+        if new_message.channel_id == LISTEN_ONLY_MEMBER {
+            let _ = voice::on_message(ctx, new_message, data).await;
         }
-        _ => {}
     }
+
     Ok(())
 }
