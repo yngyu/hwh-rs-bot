@@ -24,6 +24,7 @@ COPY --from=builder /usr/local/cargo/bin/hwh-rs-bot /usr/local/bin/hwh-rs-bot
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev=* \
+    ca-certificates=* \
     libopus-dev=* \
     ffmpeg=* \
     && apt-get clean \
