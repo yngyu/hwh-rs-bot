@@ -56,7 +56,7 @@ pub async fn disconnect_vc(ctx: Context<'_>) -> Result<(), Error> {
             let _ = ctx.reply("Failed to leave vc").await;
         }
 
-        let _ = ctx.reply("discoonectd").await;
+        let _ = ctx.reply("disconnectd").await;
     } else {
         let _ = ctx.reply("Not in a voice channel").await;
     }
@@ -75,7 +75,6 @@ pub async fn on_message(
         || message.content.chars().count() > MESSAGE_READ_MAX_LENGTH
         || url_pattern.is_match(&message.content)
     {
-        println!("{:?}", message.content.chars().count());
         return Ok(());
     }
 
