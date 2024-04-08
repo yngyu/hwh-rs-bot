@@ -9,7 +9,7 @@ edition = "2021"
 env_logger = "0.11.3"
 poise = "0.6.1"
 regex = "1.10.4"
-reqwest = "0.11.27"
+reqwest = "0.12.3"
 songbird = "0.4.1"
 symphonia = { version = "0.5.4", features = ["wav"] }
 tokio = { version = "1.37.0", default-features = false, features = ["rt-multi-thread"] }
