@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 env_logger = "0.11.3"
 poise = "0.6.1"
-regex = "1.10.4"
+regex = "1.11.1"
 reqwest = "0.11.27"
 songbird = "0.4.3"
 symphonia = { version = "0.5.4", features = ["wav"] }
