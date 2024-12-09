@@ -12,5 +12,5 @@ regex = "1.11.1"
 reqwest = "0.11.27"
 songbird = "0.4.3"
 symphonia = { version = "0.5.4", features = ["wav"] }
-tokio = { version = "1.41.1", default-features = false, features = ["rt-multi-thread"] }
+tokio = { version = "1.42.0", default-features = false, features = ["rt-multi-thread"] }
 url = "2.5.3"
