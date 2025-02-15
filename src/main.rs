@@ -11,12 +11,11 @@ use std::env::var;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
-const LISTEN_ONLY_MEMBER: serenity::ChannelId = serenity::ChannelId::new(1020367485838573638);
-
 // Custom user data passed to all command functions
 pub struct Data {
     http_client: Client,
-    voicevox_api_key: String,
+    voicevox_api_url: String,
+    subscribing_channel_id: serenity::ChannelId,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -58,11 +57,18 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
-                let voicevox_api_key =
-                    var("VOICEVOX_API_KEY").expect("Missing `VOICEVOX_API_KEY` env var");
+                let voicevox_api_url =
+                    var("VOICEVOX_API_URL").expect("Missing `VOICEVOX_API_URL` env var");
+                let subscribing_channel_id = serenity::ChannelId::new(
+                    var("SUBSCRIBING_CHANNEL_ID")
+                        .expect("Missing `SUBSCRIBING_CHANNEL_ID` env var")
+                        .parse()
+                        .expect("Failed to parse `SUBSCRIBING_CHANNEL_ID` env var"),
+                );
                 Ok(Data {
                     http_client: Client::new(),
-                    voicevox_api_key,
+                    voicevox_api_url,
+                    subscribing_channel_id,
                 })
             })
         })
@@ -92,7 +98,7 @@ async fn event_handler(
     data: &Data,
 ) -> Result<(), Error> {
     if let serenity::FullEvent::Message { new_message } = event {
-        if new_message.channel_id == LISTEN_ONLY_MEMBER {
+        if new_message.channel_id == data.subscribing_channel_id {
             let _ = voice::on_message(ctx, new_message, data).await;
         }
     }
