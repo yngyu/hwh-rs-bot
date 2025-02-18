@@ -1,13 +1,6 @@
 use poise::serenity_prelude::{self as serenity};
 use regex::Regex;
-use songbird::{
-    input::{
-        codecs::{CODEC_REGISTRY, PROBE},
-        HttpRequest, Input,
-    },
-    tracks::TrackHandle,
-    Call,
-};
+use songbird::{input::Input, tracks::TrackHandle, Call};
 use tokio::sync::Mutex;
 use url::form_urlencoded;
 
@@ -48,7 +41,7 @@ pub async fn connect_vc(ctx: Context<'_>) -> Result<(), Error> {
     let _ = ctx.reply("connected").await;
 
     if let Some(handler_lock) = manager.get(guild_id) {
-        let _ = play_phrase(handler_lock, ctx.data(), CONNECTED_MESSAGE.to_string()).await;
+        play_phrase(handler_lock, ctx.data(), CONNECTED_MESSAGE.to_string()).await?;
     }
 
     Ok(())
@@ -97,32 +90,50 @@ pub async fn on_message(
 
     if let Some(handler_lock) = manager.get(message.guild_id.expect("failed to get guild id")) {
         // in vc
-        let _ = play_phrase(handler_lock, data, message.content.clone()).await;
+        play_phrase(handler_lock, data, message.content.clone()).await?;
     }
 
     Ok(())
 }
 
 /// callable when already in vc
-async fn play_phrase(handler_lock: Arc<Mutex<Call>>, data: &Data, text: String) -> TrackHandle {
-    let api_key =
-        form_urlencoded::byte_serialize(data.voicevox_api_key.as_bytes()).collect::<String>();
+async fn play_phrase(
+    handler_lock: Arc<Mutex<Call>>,
+    data: &Data,
+    text: String,
+) -> Result<TrackHandle, Error> {
+    let base_url = &data.voicevox_api_url;
 
     // TODO: get from DB
     let speaker_id = 8;
     let text = form_urlencoded::byte_serialize(text.as_bytes()).collect::<String>();
-    let request = format!(
-        "https://deprecatedapis.tts.quest/v2/voicevox/audio/?key={}&text={}&speaker={}",
-        api_key, text, speaker_id
-    );
 
     let http_client = data.http_client.clone();
 
+    let audio_query_url = format!(
+        "{}/audio_query?text={}&speaker={}",
+        base_url, text, speaker_id
+    );
+
+    let audio_query = http_client
+        .post(audio_query_url)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let synthesis_url = format!("{}/synthesis?&speaker={}", base_url, speaker_id);
+    let audio: Input = http_client
+        .post(synthesis_url)
+        .header("Content-Type", "application/json")
+        .body(audio_query)
+        .send()
+        .await?
+        .bytes()
+        .await?
+        .into();
+
     let mut handler = handler_lock.lock().await;
-    let input: Input = HttpRequest::new(http_client, request).into();
-    let input = input
-        .make_playable_async(&CODEC_REGISTRY, &PROBE)
-        .await
-        .expect("Err happend during make it playable");
-    handler.play_input(input)
+
+    Ok(handler.play_input(audio))
 }
