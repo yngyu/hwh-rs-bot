@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::{Context, Data, Error};
 
-const MESSAGE_READ_MAX_LENGTH: usize = 50;
+const MESSAGE_READ_MAX_LENGTH: usize = 1000;
 const CONNECTED_MESSAGE: &str = "お待たせ！";
 
 #[poise::command(slash_command)]
