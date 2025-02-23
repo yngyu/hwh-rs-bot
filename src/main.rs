@@ -1,10 +1,12 @@
 #![warn(clippy::str_to_string)]
 
+mod db;
 mod voice;
 
 use poise::serenity_prelude as serenity;
 use songbird::SerenityInit;
 use std::env::var;
+use std::sync::Arc;
 use voice::build_voice;
 
 // Types used by all command functions
@@ -37,10 +39,20 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 async fn main() {
     env_logger::init();
 
+    let http_client = Arc::new(reqwest::Client::new());
+    let db = Arc::new(db::build_db().await.expect("Failed to connect to db"));
+
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![voice::connect_vc(), voice::disconnect_vc()],
+        commands: vec![
+            voice::connect_vc(),
+            voice::disconnect_vc(),
+            voice::show_vc(),
+            voice::set_vc(),
+            voice::show_vc_info(),
+            voice::show_vcs_info(),
+        ],
         // The global error handler for all error cases that may occur
         on_error: |error| Box::pin(on_error(error)),
         event_handler: |ctx, event, framework, data| {
@@ -56,7 +68,8 @@ async fn main() {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
                 Ok(Data {
-                    voice: build_voice().expect("Failed to initialize voice"),
+                    voice: build_voice(Arc::clone(&http_client), Arc::clone(&db))
+                        .expect("Failed to initialize voice"),
                 })
             })
         })
