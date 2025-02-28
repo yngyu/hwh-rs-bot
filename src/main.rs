@@ -1,9 +1,10 @@
 #![warn(clippy::str_to_string)]
 
+mod chat;
 mod db;
 mod voice;
 
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, User};
 use songbird::SerenityInit;
 use std::env::var;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 // Custom user data passed to all command functions
 pub struct Data {
     voice: voice::Voice,
+    chat: chat::Chat,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -67,9 +69,13 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
+                let user: Arc<User> = Arc::new(_ready.user.clone().into());
+
                 Ok(Data {
                     voice: build_voice(Arc::clone(&http_client), Arc::clone(&db))
                         .expect("Failed to initialize voice"),
+                    chat: chat::build_chat(Arc::clone(&http_client), Arc::clone(&user))
+                        .expect("Failed to initialize chat"),
                 })
             })
         })
@@ -100,6 +106,7 @@ async fn event_handler(
 ) -> Result<(), Error> {
     if let serenity::FullEvent::Message { new_message } = event {
         data.voice.on_message(ctx, new_message).await?;
+        data.chat.on_message(ctx, new_message).await?;
     }
 
     Ok(())
