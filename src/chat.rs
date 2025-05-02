@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::Error;
 
-const MODEL: &str = "llama3.2:3b";
+const MODEL: &str = "qwen3:4b";
 const MAX_MESSAGE_LENGTH: usize = 2000;
 
 pub struct Chat {
@@ -48,7 +48,7 @@ impl Chat {
 
         let system_message = json::json!({
             "role": "system",
-            "content": "あなたはDiscordで使用されているアシスタントbotです。質問に対しては簡潔な回答を心掛けてください。",
+            "content": "あなたはDiscordの内輪コミュニティで使用されているアシスタントbotです。質問に対しては簡潔な回答を心掛けてください。",
         });
         let messages = chain
             .iter()
@@ -61,7 +61,7 @@ impl Chat {
                 } else {
                     json::json!({
                         "role": "user",
-                        "content": self.delete_mention_to_myself(m),
+                        "content": format!("/no_think {}", self.delete_mention_to_myself(m)),
                     })
                 }
             })
@@ -103,7 +103,7 @@ impl Chat {
                 stream_buffer.extend_from_slice(chunk);
                 if let Ok(piece) = json::from_slice::<json::Value>(&stream_buffer) {
                     stream_buffer.clear();
-                    reply_buffer.push_str(piece["message"]["content"].as_str().unwrap());
+                    reply_buffer.push_str(piece["message"]["content"].as_str().unwrap_or(""));
                     if piece["done"].as_bool().unwrap_or(false) {
                         done = true;
                         break;
@@ -114,6 +114,8 @@ impl Chat {
             if done || reply_buffer.chars().count() >= 100 {
                 if (count + reply_buffer.chars().count()) >= MAX_MESSAGE_LENGTH {
                     reply = reply_buffer.clone();
+                    reply = reply.replace("<think>\n\n</think>\n\n", "");
+
                     my_message = message.reply(ctx, &reply).await?;
                     count = reply.chars().count();
                 } else {
