@@ -2,29 +2,34 @@ use poise::serenity_prelude::futures::StreamExt;
 use poise::serenity_prelude::{self as serenity, json, CacheHttp, EditMessage, Message, User};
 use regex::Regex;
 use std::env::var;
-use std::str;
 use std::sync::Arc;
 
 use crate::Error;
 
-const MODEL: &str = "qwen3:4b";
 const MAX_MESSAGE_LENGTH: usize = 2000;
 
 pub struct Chat {
     http_client: Arc<reqwest::Client>,
-    llm_api_url: String,
     bot: Arc<User>,
     mention_pattern: Regex,
+    model: String,
+    api_url: String,
+    token: String,
 }
 
 pub fn build_chat(http_client: Arc<reqwest::Client>, bot: Arc<User>) -> Result<Chat, Error> {
     let mention_pattern = Regex::new(&format!("<@{}>[\\s　]*", bot.id))?;
+    let model = var("LLM_MODEL").unwrap_or(String::from(""));
+    let api_url = var("LLM_API_URL").unwrap_or(String::from(""));
+    let token = var("LLM_TOKEN").unwrap_or(String::from(""));
 
     Ok(Chat {
         http_client,
-        llm_api_url: var("LLM_API_URL")?,
         bot,
         mention_pattern,
+        model,
+        api_url,
+        token,
     })
 }
 
@@ -61,7 +66,7 @@ impl Chat {
                 } else {
                     json::json!({
                         "role": "user",
-                        "content": format!("/no_think {}", self.delete_mention_to_myself(m)),
+                        "content": self.delete_mention_to_myself(m),
                     })
                 }
             })
@@ -71,15 +76,23 @@ impl Chat {
             .chain(messages)
             .collect::<Vec<json::Value>>();
 
-        let chat_completion_url = format!("{}/api/chat", self.llm_api_url);
+        let chat_completion_url = format!("{}/v1/chat/completions", self.api_url);
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", self.token).parse()?,
+        );
+        headers.insert(reqwest::header::CONTENT_TYPE, "application/json".parse()?);
+
         let mut response = self
             .http_client
             .post(&chat_completion_url)
-            .header("Content-Type", "application/json")
+            .headers(headers)
             .body(
                 json::json!({
-                    "model": MODEL,
+                    "model": self.model,
                     "messages": messages,
+                    "stream": true,
                 })
                 .to_string(),
             )
@@ -96,17 +109,30 @@ impl Chat {
 
         while let Some(bytes) = response.next().await {
             let bytes = bytes?.clone();
+
             let chunks = bytes.split(|&x| x == b'\n').collect::<Vec<&[u8]>>();
             let mut done = false;
 
             for chunk in chunks {
-                stream_buffer.extend_from_slice(chunk);
+                if chunk.is_empty() || chunk == b"[DONE]" {
+                    continue;
+                }
+                if !chunk.starts_with(b"data: ") {
+                    continue;
+                } else {
+                    stream_buffer.extend_from_slice(&chunk[6..]); // Remove "data: " prefix
+                }
                 if let Ok(piece) = json::from_slice::<json::Value>(&stream_buffer) {
                     stream_buffer.clear();
-                    reply_buffer.push_str(piece["message"]["content"].as_str().unwrap_or(""));
-                    if piece["done"].as_bool().unwrap_or(false) {
-                        done = true;
-                        break;
+                    reply_buffer.push_str(
+                        piece["choices"][0]["delta"]["content"]
+                            .as_str()
+                            .unwrap_or(""),
+                    );
+                    if let Some(finish_reason) = piece["choices"][0]["finish_reason"].as_str() {
+                        if finish_reason == "stop" || finish_reason == "length" {
+                            done = true;
+                        }
                     }
                 }
             }
@@ -114,8 +140,6 @@ impl Chat {
             if done || reply_buffer.chars().count() >= 100 {
                 if (count + reply_buffer.chars().count()) >= MAX_MESSAGE_LENGTH {
                     reply = reply_buffer.clone();
-                    reply = reply.replace("<think>\n\n</think>\n\n", "");
-
                     my_message = message.reply(ctx, &reply).await?;
                     count = reply.chars().count();
                 } else {
