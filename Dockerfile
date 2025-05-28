@@ -1,4 +1,4 @@
-FROM rust:1.86 AS builder
+FROM rust:1.87 AS builder
 
 ARG  WORKDIR="/usr/src/hwh-rs-bot"
 
@@ -14,7 +14,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN cargo install --path .
 
 
-FROM debian:12.10-slim
+FROM debian:12.11-slim
 
 ARG  USER_ID="10000"
 ARG  GROUP_ID="10001"
