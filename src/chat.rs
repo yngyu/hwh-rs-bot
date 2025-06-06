@@ -1,8 +1,13 @@
+use base64::Engine;
 use poise::serenity_prelude::futures::StreamExt;
-use poise::serenity_prelude::{self as serenity, json, CacheHttp, EditMessage, Message, User};
+use poise::serenity_prelude::{
+    self as serenity, json, Attachment, CacheHttp, EditMessage, Message, User,
+};
 use regex::Regex;
 use std::env::var;
 use std::sync::Arc;
+
+use base64::prelude::BASE64_STANDARD;
 
 use crate::Error;
 
@@ -57,26 +62,51 @@ impl Chat {
         });
         let messages = chain
             .iter()
-            .map(|m| {
+            .map(|m| async {
                 if m.author.id == self.bot.id {
                     json::json!({
                         "role": "assistant",
                         "content": m.content,
                     })
                 } else {
+                    let urls = futures::future::try_join_all(
+                        m.attachments
+                            .iter()
+                            .filter(|a| {
+                                a.height.is_some() && a.width.is_some() && a.content_type.is_some()
+                            })
+                            .map(|a| self.get_image_base64(a)),
+                    )
+                    .await;
+                    let mut content = vec![json::json!({
+                        "type": "text",
+                        "text": self.delete_mention_to_myself(m),
+                    })];
+                    if let Ok(urls) = urls {
+                        content.extend(urls.into_iter().map(|url| {
+                            json::json!({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": url,
+                                }
+                            })
+                        }));
+                    }
+
                     json::json!({
                         "role": "user",
-                        "content": self.delete_mention_to_myself(m),
+                        "content": content,
                     })
                 }
             })
-            .collect::<Vec<json::Value>>();
+            .collect::<Vec<_>>();
+        let messages = futures::future::join_all(messages).await;
         let messages = vec![system_message]
             .into_iter()
             .chain(messages)
             .collect::<Vec<json::Value>>();
 
-        let chat_completion_url = format!("{}/v1/chat/completions", self.api_url);
+        let chat_completion_url = format!("{}/chat/completions", self.api_url);
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::AUTHORIZATION,
@@ -181,5 +211,15 @@ impl Chat {
         self.mention_pattern
             .replace_all(&message.content, "")
             .to_string()
+    }
+
+    async fn get_image_base64(&self, attachment: &Attachment) -> Result<String, Error> {
+        let content = attachment.download().await?;
+        let base64_content = BASE64_STANDARD.encode(content);
+        Ok(format!(
+            "data:{};base64,{}",
+            attachment.content_type.as_deref().unwrap_or("image/png"),
+            base64_content
+        ))
     }
 }
