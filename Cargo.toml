@@ -7,8 +7,11 @@ edition = "2021"
 
 [dependencies]
 base64 = "0.22.1"
+chrono = "0.4.41"
+chrono-tz = "0.10.3"
 env_logger = "0.11.8"
 futures = "0.3.31"
+log = "0.4.27"
 mongodb = "3.2.3"
 poise = "0.6.1"
 regex = "1.11.1"

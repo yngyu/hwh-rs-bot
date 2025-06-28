@@ -2,6 +2,7 @@
 
 mod chat;
 mod db;
+mod remind;
 mod voice;
 
 use poise::serenity_prelude::{self as serenity, User};
@@ -18,6 +19,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 pub struct Data {
     voice: voice::Voice,
     chat: chat::Chat,
+    remind: remind::Remind,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -25,13 +27,13 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
     match error {
-        poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
+        poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {error:?}"),
         poise::FrameworkError::Command { error, ctx, .. } => {
             println!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                println!("Error while handling error: {}", e)
+                println!("Error while handling error: {e}")
             }
         }
     }
@@ -54,6 +56,7 @@ async fn main() {
             voice::set_vc(),
             voice::show_vc_info(),
             voice::show_vcs_info(),
+            remind::remind(),
         ],
         // The global error handler for all error cases that may occur
         on_error: |error| Box::pin(on_error(error)),
@@ -76,6 +79,7 @@ async fn main() {
                         .expect("Failed to initialize voice"),
                     chat: chat::build_chat(Arc::clone(&http_client), Arc::clone(&user))
                         .expect("Failed to initialize chat"),
+                    remind: remind::build_remind(Arc::clone(&db))?,
                 })
             })
         })
@@ -104,9 +108,19 @@ async fn event_handler(
     _framework: poise::FrameworkContext<'_, Data, Error>,
     data: &Data,
 ) -> Result<(), Error> {
-    if let serenity::FullEvent::Message { new_message } = event {
-        data.voice.on_message(ctx, new_message).await?;
-        data.chat.on_message(ctx, new_message).await?;
+    match event {
+        serenity::FullEvent::Ready { data_about_bot: _ } => {
+            let remind_clone = data.remind.clone();
+            let ctx_clone = ctx.clone();
+            tokio::spawn(async move {
+                let _ = remind_clone.invoke_reminders(&ctx_clone).await;
+            });
+        }
+        serenity::FullEvent::Message { new_message } => {
+            data.voice.on_message(ctx, new_message).await?;
+            data.chat.on_message(ctx, new_message).await?;
+        }
+        _ => {}
     }
 
     Ok(())
