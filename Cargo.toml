@@ -12,11 +12,11 @@ chrono-tz = "0.10.3"
 env_logger = "0.11.8"
 futures = "0.3.31"
 log = "0.4.27"
-mongodb = "3.2.3"
+mongodb = "3.2.4"
 poise = "0.6.1"
 regex = "1.11.1"
-reqwest = { version = "0.12.20", features = ["stream"] }
+reqwest = { version = "0.12.22", features = ["stream"] }
 songbird = "0.5.0"
 symphonia = { version = "0.5.4", features = ["wav"] }
-tokio = { version = "1.45.0", default-features = false, features = ["rt-multi-thread"] }
+tokio = { version = "1.46.1", default-features = false, features = ["rt-multi-thread"] }
 url = "2.5.3"
