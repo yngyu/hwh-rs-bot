@@ -14,7 +14,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN cargo install --path .
 
 
-FROM debian:13.0-slim
+FROM debian:13.1-slim
 
 ARG  USER_ID="10000"
 ARG  GROUP_ID="10001"
