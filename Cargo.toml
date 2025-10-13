@@ -7,16 +7,16 @@ edition = "2021"
 
 [dependencies]
 base64 = "0.22.1"
-chrono = "0.4.41"
+chrono = "0.4.42"
 chrono-tz = "0.10.4"
 env_logger = "0.11.8"
 futures = "0.3.31"
-log = "0.4.27"
-mongodb = "3.2.4"
+log = "0.4.28"
+mongodb = "3.3.0"
 poise = "0.6.1"
-regex = "1.11.1"
-reqwest = { version = "0.12.23", features = ["stream"] }
+regex = "1.12.2"
+reqwest = { version = "0.12.24", features = ["stream"] }
 songbird = "0.5.0"
-symphonia = { version = "0.5.4", features = ["wav"] }
+symphonia = { version = "0.5.5", features = ["wav"] }
 tokio = { version = "1.47.1", default-features = false, features = ["rt-multi-thread"] }
-url = "2.5.3"
+url = "2.5.7"
