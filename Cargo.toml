@@ -15,7 +15,7 @@ log = "0.4.29"
 mongodb = "3.4.1"
 poise = "0.6.1"
 regex = "1.12.2"
-reqwest = { version = "0.13.1", features = ["stream"] }
+reqwest = { version = "0.12.28", features = ["stream"] }
 songbird = "0.5.0"
 symphonia = { version = "0.5.5", features = ["wav"] }
 tokio = { version = "1.48.0", default-features = false, features = ["rt-multi-thread"] }
