@@ -1,8 +1,7 @@
-use poise::serenity_prelude::{self as serenity, json, CreateAttachment, UserId};
-use poise::CreateReply;
+use poise::serenity_prelude::{self as serenity, json, UserId};
 use regex::Regex;
 use songbird::{input::Input, tracks::TrackHandle, Call};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use url::form_urlencoded;
 
 use std::collections::BTreeMap;
@@ -21,6 +20,7 @@ pub struct Voice {
     voicevox_api_url: String,
     subscribgin_chanel_id: serenity::ChannelId,
     db: Arc<Db>,
+    speakers_info: OnceCell<BTreeMap<u8, String>>,
 }
 
 pub fn build_voice(http_client: Arc<reqwest::Client>, db: Arc<Db>) -> Result<Voice, Error> {
@@ -29,6 +29,7 @@ pub fn build_voice(http_client: Arc<reqwest::Client>, db: Arc<Db>) -> Result<Voi
         voicevox_api_url: var("VOICEVOX_API_URL")?,
         subscribgin_chanel_id: serenity::ChannelId::new(var("SUBSCRIBING_CHANNEL_ID")?.parse()?),
         db,
+        speakers_info: OnceCell::new(),
     })
 }
 
@@ -214,83 +215,72 @@ impl Voice {
         Ok(())
     }
 
-    pub async fn show_vcs_info(&self, ctx: Context<'_>) -> Result<(), Error> {
-        let seakers = self.get_vcs().await?;
-        let json = json::to_string_pretty(&seakers)?;
+    async fn get_vcs(&self) -> Result<&BTreeMap<u8, String>, Error> {
+        self.speakers_info
+            .get_or_try_init(|| async {
+                let speakers_query_url = format!("{}/speakers", self.voicevox_api_url);
 
-        let attachment = CreateAttachment::bytes(json.as_bytes(), "speakers.json");
-        let reply = CreateReply::default()
-            .attachment(attachment)
-            .ephemeral(true);
+                let speakers_str = self
+                    .http_client
+                    .get(speakers_query_url)
+                    .send()
+                    .await?
+                    .text()
+                    .await?;
 
-        ctx.send(reply).await?;
+                let speakers: json::Value = json::from_str(&speakers_str)?;
+                let speakers = speakers.as_array().expect("failed to parse speakers");
 
-        Ok(())
-    }
+                let mut speakers_info: BTreeMap<u8, String> = BTreeMap::new();
 
-    pub async fn show_vc_info(&self, ctx: Context<'_>, id: u8) -> Result<(), Error> {
-        let speakers = self.get_vcs().await?;
-
-        let speaker = speakers.get(&id);
-
-        if let Some(speaker) = speaker {
-            ctx.reply(speaker.to_string()).await?;
-        } else {
-            ctx.reply("Not found").await?;
-        }
-
-        Ok(())
-    }
-
-    pub async fn get_vcs(&self) -> Result<BTreeMap<u8, json::Value>, Error> {
-        let speakers_query_url = format!("{}/speakers", self.voicevox_api_url);
-
-        let speakers_str = self
-            .http_client
-            .get(speakers_query_url)
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        let speakers: json::Value = json::from_str(&speakers_str)?;
-        let speakers = speakers.as_array().expect("failed to parse speakers");
-
-        let mut speakers_info: BTreeMap<u8, json::Value> = BTreeMap::new();
-
-        speakers.iter().for_each(|speaker| {
-            let name = speaker
-                .get("name")
-                .expect("failed to parse name")
-                .as_str()
-                .expect("failed to parse name");
-
-            speaker
-                .get("styles")
-                .expect("failed to parse styles")
-                .as_array()
-                .expect("failed to parse styles")
-                .iter()
-                .for_each(|style| {
-                    let style_name = style
+                speakers.iter().for_each(|speaker| {
+                    let name = speaker
                         .get("name")
                         .expect("failed to parse name")
                         .as_str()
                         .expect("failed to parse name");
-                    let style_id = style
-                        .get("id")
-                        .expect("failed to parse id")
-                        .as_u64()
-                        .expect("failed to parse id") as u8;
 
-                    speakers_info.entry(style_id).or_insert(json::json!({
-                        "name": name,
-                        "style": style_name
-                    }));
+                    speaker
+                        .get("styles")
+                        .expect("failed to parse styles")
+                        .as_array()
+                        .expect("failed to parse styles")
+                        .iter()
+                        .for_each(|style| {
+                            let style_name = style
+                                .get("name")
+                                .expect("failed to parse name")
+                                .as_str()
+                                .expect("failed to parse name");
+                            let style_id = style
+                                .get("id")
+                                .expect("failed to parse id")
+                                .as_u64()
+                                .expect("failed to parse id")
+                                as u8;
+
+                            speakers_info
+                                .entry(style_id)
+                                .or_insert(format!("{} - {}", name, style_name));
+                        });
                 });
-        });
 
-        Ok(speakers_info)
+                Ok(speakers_info)
+            })
+            .await
+    }
+
+    async fn vc_autocomplete(&self, partial: &str) -> Result<Vec<(String, u8)>, Error> {
+        let speakers = self.get_vcs().await?;
+
+        let options = speakers
+            .iter()
+            .filter(|(_, info)| info.contains(partial) || partial.is_empty())
+            .map(|(id, info)| (info.clone(), *id))
+            .take(25)
+            .collect();
+
+        Ok(options)
     }
 }
 
@@ -312,20 +302,30 @@ pub async fn show_vc(ctx: Context<'_>) -> Result<(), Error> {
     ctx.data().voice.show_vc(ctx).await
 }
 
+/// Autocomplete handler for the `id` parameter of `set_vc`
+async fn vc_autocomplete(
+    ctx: Context<'_>,
+    partial: &str,
+) -> impl Iterator<Item = serenity::AutocompleteChoice> {
+    let choices = ctx
+        .data()
+        .voice
+        .vc_autocomplete(partial)
+        .await
+        .unwrap_or_default();
+
+    choices
+        .into_iter()
+        .map(|(name, id)| serenity::AutocompleteChoice::new(name, id as u64))
+}
+
 /// Set vc
 #[poise::command(slash_command)]
-pub async fn set_vc(ctx: Context<'_>, #[description = "id"] id: u8) -> Result<(), Error> {
+pub async fn set_vc(
+    ctx: Context<'_>,
+    #[description = "id"]
+    #[autocomplete = "vc_autocomplete"]
+    id: u8,
+) -> Result<(), Error> {
     ctx.data().voice.set_vc(ctx, id).await
-}
-
-/// Show all speakers info
-#[poise::command(slash_command)]
-pub async fn show_vcs_info(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.data().voice.show_vcs_info(ctx).await
-}
-
-/// Show speaker info
-#[poise::command(slash_command)]
-pub async fn show_vc_info(ctx: Context<'_>, #[description = "id"] id: u8) -> Result<(), Error> {
-    ctx.data().voice.show_vc_info(ctx, id).await
 }
