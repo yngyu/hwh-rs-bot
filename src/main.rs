@@ -96,11 +96,8 @@ async fn event_handler(
     _framework: poise::FrameworkContext<'_, Data, Error>,
     data: &Data,
 ) -> Result<(), Error> {
-    match event {
-        serenity::FullEvent::Message { new_message } => {
-            data.voice.on_message(ctx, new_message).await?;
-        }
-        _ => {}
+    if let serenity::FullEvent::Message { new_message } = event {
+        data.voice.on_message(ctx, new_message).await?;
     }
 
     Ok(())
