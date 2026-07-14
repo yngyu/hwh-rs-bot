@@ -139,7 +139,7 @@ impl Voice {
 
         let audio_query_url = format!(
             "{}/audio_query?text={}&speaker={}",
-            &self.voicevox_api_url, text, speaker_id
+            self.voicevox_api_url, text, speaker_id
         );
 
         let audio_query = self
@@ -152,7 +152,7 @@ impl Voice {
 
         let synthesis_url = format!(
             "{}/synthesis?&speaker={}",
-            &self.voicevox_api_url, speaker_id
+            self.voicevox_api_url, speaker_id
         );
         let audio: Input = self
             .http_client
