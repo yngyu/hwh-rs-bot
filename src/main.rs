@@ -1,7 +1,6 @@
 #![warn(clippy::str_to_string)]
 
 mod db;
-mod remind;
 mod voice;
 
 use poise::serenity_prelude::{self as serenity};
@@ -17,7 +16,6 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 // Custom user data passed to all command functions
 pub struct Data {
     voice: voice::Voice,
-    remind: remind::Remind,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -52,7 +50,6 @@ async fn main() {
             voice::disconnect_vc(),
             voice::show_vc(),
             voice::set_vc(),
-            remind::remind(),
         ],
         // The global error handler for all error cases that may occur
         on_error: |error| Box::pin(on_error(error)),
@@ -71,7 +68,6 @@ async fn main() {
                 Ok(Data {
                     voice: build_voice(Arc::clone(&http_client), Arc::clone(&db))
                         .expect("Failed to initialize voice"),
-                    remind: remind::build_remind(Arc::clone(&db))?,
                 })
             })
         })
@@ -101,13 +97,6 @@ async fn event_handler(
     data: &Data,
 ) -> Result<(), Error> {
     match event {
-        serenity::FullEvent::Ready { data_about_bot: _ } => {
-            let remind_clone = data.remind.clone();
-            let ctx_clone = ctx.clone();
-            tokio::spawn(async move {
-                let _ = remind_clone.invoke_reminders(&ctx_clone).await;
-            });
-        }
         serenity::FullEvent::Message { new_message } => {
             data.voice.on_message(ctx, new_message).await?;
         }
